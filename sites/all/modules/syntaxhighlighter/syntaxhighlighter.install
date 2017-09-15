@@ -1,0 +1,92 @@
+<?php
+// $Id: syntaxhighlighter.install,v 1.19.2.1 2010/12/10 03:35:06 mattyoung Exp $
+
+/**
+ * @file
+ * Syntax highlighter module installation file.
+ */
+
+function syntaxhighlighter_install() {
+  $t = get_t();
+  drupal_set_message($t('You must <a href="!link">turn on the Syntaxhighlighter filter</a> in an input format for syntax highlight code using that format.',
+    array('!link' => url('admin/settings/filters'))), 'status');
+  drupal_set_message($t('Then <a href="!link">configure the Syntax Highlighter module</a>.',
+    array('!link' => url('admin/settings/syntaxhighlighter'))), 'status');
+  drupal_set_message($t('See <a href="!link">the Syntaxhighlighter module README.txt file</a> for instructions.',
+                         array('!link' => url(drupal_get_path('module', 'syntaxhighlighter') .'/README.txt'))));
+}
+
+
+function syntaxhighlighter_uninstall() {
+  file_delete(file_directory_path() . '/syntaxhighlighter.autoloader.js');
+  db_query("DELETE FROM {filters} where module='syntaxhighlighter'");
+  db_query("DELETE FROM {variable} WHERE name LIKE 'syntaxhighlighter_%'");
+  cache_clear_all('variables', 'cache');
+}
+
+/**
+ * Make sure the user has installed the 'SyntaxHighlighter' library
+ * the side effect of this is to rescan the javascript lib location
+ */
+function syntaxhighlighter_requirements($phase) {
+  $t = get_t();
+  require_once('syntaxhighlighter.module');
+  // lib location may have moved, delete the cached location to force scan again
+  variable_del('syntaxhighlighter_lib_location');
+  $lib_location = _syntaxhighlighter_get_lib_location();
+  $requirements['syntaxhighlighter']['title'] = $t('Syntax highlighter js library');
+  $requirements['syntaxhighlighter']['value'] = $lib_location ? $t('Installed') : $t('Not installed');
+
+  // Raise warning if the syntaxhighlighter script file is not install
+  if (!$lib_location) {
+    $requirements['syntaxhighlighter']['severity'] = REQUIREMENT_ERROR;
+    $requirements['syntaxhighlighter']['description'] = $t('The required Syntax highlighter javascript library is not installed. See <a href="!link">the Syntaxhighlighter module README.txt file</a> for instructions.',
+                                                            array('!link' => url(drupal_get_path('module', 'syntaxhighlighter') .'/README.txt')));
+  }
+
+  return $requirements;
+}
+
+
+function syntaxhighlighter_update_6100() {
+  $items = array();
+
+    // Enable the filter for the help text to show up automatically
+  $items[] = update_sql("DELETE FROM {filters} where module='syntaxhighlighter'");
+  $items[] = update_sql("INSERT INTO {filters} (format, module, delta, weight) VALUES (2, 'syntaxhighlighter', 0, 10)");
+
+  return $items;
+}
+
+
+function syntaxhighlighter_update_6101() {
+  $t = get_t();
+  drupal_set_message($t('Go to <a href="!link">filters settings</a> to enable the Syntaxhighlighter filter in the appropriate input format. It\'s not necessary to use Full HTML format anymore.',
+    array('!link' => url('admin/settings/filters'))), 'warning');
+
+  return array();
+}
+
+
+/**
+ * Delete the cached javascript lib location in case the library has been
+ * upgraded to a different location.
+ */
+function syntaxhighlighter_update_6102() {
+  variable_del('syntaxhighlighter_lib_location');
+  $t = get_t();
+  drupal_set_message($t('Syntaxhighlighter module: go to <a href="!link">the status page</a> to ensure the Syntaxhighlighter Javascript library is installed correctly. Also, anytime the library install location changes, visit the <a href="!link">the status page</a> to update the cached location value.',
+    array('!link' => url('admin/reports/status'))), 'warning');
+
+  return array();
+}
+
+
+/**
+ * Rename 'syntaxhighlighter_off_pages' variable to 'syntaxhighlighter_pages'
+ */
+function syntaxhighlighter_update_6103() {
+  variable_set('syntaxhighlighter_pages', variable_get('syntaxhighlighter_off_pages', "admin\nadmin/*\nuser\nuser/*\nimce\nimce/*\n"));
+  variable_del('syntaxhighlighter_off_pages');
+  return array();
+}

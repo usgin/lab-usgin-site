@@ -1,0 +1,244 @@
+<project name="geoportal" default="dist" basedir=".">
+
+   <!-- Sets the project description -->
+   <description>AZGS Geoportal Implementation - web only interface/application</description>
+
+   <!-- =========================================================================================== -->
+   <!-- Order matters.  If a property is set in two different .properties files then the last       -->
+   <!-- property file listed will set the value of that property.  The geoportal.properties file    -->
+   <!-- should remain as generic as possible.  Modifiy user.properties.example to suit your         -->
+   <!-- development environment needs then rename to something meaningful and add a property tag    -->
+   <!-- entry like below, referencing the appropriate file.                                         -->
+   <!-- =========================================================================================== -->
+   <property file="geoportal.properties"/>
+   <property file="ajc.properties"/>
+
+   <property name='src.dir'       value='src'/>
+   <property name='lib.dir'       value='lib'/>
+   <property name='build.dir'     value='build'/>
+   <property name='classes.dir'   value='${build.dir}/WEB-INF/classes'/>
+   <property name="jar.dir"       value="${build.dir}/jar"/>
+   <property name='docs.dir'      value='docs'/>
+   <property name='www.dir'       value='www'/>
+
+   <!-- =========================================================================================== -->
+   <!-- Include the ant tasks required to manage the project's Tomcat web application.  These tasks -->
+   <!-- become usable by Ant when the catalina-ant.jar file found in TOMCAT_INSTALLATION/lib is     -->
+   <!-- copied to ANT_INSTALLATION/lib.                                                             -->
+   <!-- =========================================================================================== -->
+   <taskdef name="deploy"   classname="org.apache.catalina.ant.DeployTask"/>
+   <taskdef name="list"     classname="org.apache.catalina.ant.ListTask"/>
+   <taskdef name="reload"   classname="org.apache.catalina.ant.ReloadTask"/>
+   <taskdef name="undeploy" classname="org.apache.catalina.ant.UndeployTask"/>
+
+   <!-- =========================================================================================== -->
+   <!-- Compile/classpath settings.  tomcat.home and ant.home should be set in one of the           -->
+   <!-- properties files.                                                                           -->
+   <!-- =========================================================================================== -->
+   <path id="project.classpath">
+      <fileset dir="${lib.dir}">
+          <include name="**/*.jar" />
+      </fileset>
+
+      <fileset dir="${local.tomcat.home}/lib">
+          <include name="**/*.jar" />
+      </fileset>
+
+      <fileset dir="${local.ant.home}/lib">
+         <include name="**/*.jar" />
+      </fileset>
+   </path>
+
+   <!-- =========================================================================================== -->
+   <!-- Target used to compile, package, war and deploy the application to sillimanite server.      -->
+   <!-- =========================================================================================== -->
+   <target name="sillimanite.package" description="Compiles, packages, and deploys the app to sillimanite server.">
+      <!-- Delete the war file first -->
+      <delete file="geoportal.war"/>
+
+      <!-- Compile's the java sources -->
+      <antcall target="compile"/>
+
+      <!-- Copy all the web app sources -->
+      <copy todir='${build.dir}'>
+         <fileset dir='${www.dir}' excludes='**/*.bak,**/*.log'/>
+      </copy>
+
+      <copy todir='${classes.dir}/gpt'>
+         <fileset dir='${src.dir}/gpt' excludes='**/*.bak,**/*.log'/>
+      </copy>
+
+      <copy todir='${build.dir}/WEB-INF/lib'>
+         <fileset dir='${lib.dir}' excludes='**/*.bak,**/*.log'/>
+      </copy>
+
+      <copy todir='${classes.dir}'>
+         <fileset dir='${src.dir}' includes='**/*.properties' excludes='**/*.bak,**/*.log'/>
+      </copy>
+
+      <!-- Copy the context.xml file for sillimanite -->
+      <copy file='${www.dir}/META-INF/sillimanite_context.xml' tofile='${www.dir}/META-INF/context.xml'/>
+
+      <!-- Copy the content.xml file for debug -->
+      <copy file='${src.dir}/gpt/config/sillimanite_gpt.xml' tofile='${classes.dir}/gpt/config/gpt.xml'/>
+
+      <!-- Create the war file -->
+      <!--
+      <antcall target="war"/>
+      -->
+
+      <!-- Uninstall the app from Debug and deploy the war file -->
+      <!--
+      <undeploy url="${debug.tomcat.manager.url}"
+                username="${debug.tomcat.manager}"
+                password="${debug.tomcat.manager.password}"
+                path="/geoportal"/>
+
+      <deploy url="${debug.tomcat.manager.url}"
+              username="${debug.tomcat.manager}"
+              password="${debug.tomcat.manager.password}"
+              path="/geoportal"
+              update="true"
+              war="geoportal.war"/>
+      -->
+   </target>
+
+   <!-- =========================================================================================== -->
+   <!-- Target used to compile, package, war and deploy the application to debug.usgin.org.         -->
+   <!-- =========================================================================================== -->
+   <target name="debug.deploy" description="Compiles, packages, and deploys the app to debug.usgin.org.">
+
+      <!-- A safety messure to make sure the user/developer has tested against sillimanite before  -->
+      <!-- deploying to debug.usgin.org.                                                           -->
+      <input message="Did you test deployment against Sillimanite first?" validargs="y,n" addproperty="do.debug.deploy"/>
+      <condition property="do.fail">
+         <equals arg1="n" arg2="${do.debug.deploy}"/>
+      </condition>
+      <fail if="do.fail">** Debug.usgin.org deployment aborted by user. **</fail>
+
+      <!-- Delete the war file first -->
+      <delete file="geoportal.war"/>
+
+      <!-- Compile's the java sources -->
+      <antcall target="compile"/>
+
+      <!-- Copy all the web app sources -->
+      <copy todir='${build.dir}'>
+         <fileset dir='${www.dir}' excludes='**/*.bak,**/*.log'/>
+      </copy>
+
+      <copy todir='${classes.dir}/gpt'>
+         <fileset dir='${src.dir}/gpt' excludes='**/*.bak,**/*.log'/>
+      </copy>
+
+      <copy todir='${build.dir}/WEB-INF/lib'>
+         <fileset dir='${lib.dir}' excludes='**/*.bak,**/*.log'/>
+      </copy>
+
+      <copy todir='${classes.dir}'>
+         <fileset dir='${src.dir}' includes='**/*.properties' excludes='**/*.bak,**/*.log'/>
+      </copy>
+
+      <!-- Copy the gpt.xml file for debug -->
+      <copy file='${src.dir}/gpt/config/debug_gpt.xml' tofile='${classes.dir}/gpt/config/gpt.xml'/>
+
+      <!-- Create the war file -->
+      <antcall target="war"/>
+
+      <!-- Uninstall the app from Debug and deploy the war file -->
+      <!--
+      <undeploy url="${debug.tomcat.manager.url}"
+                username="${debug.tomcat.manager}"
+                password="${debug.tomcat.manager.password}"
+                path="/geoportal"/>
+
+      <deploy url="${debug.tomcat.manager.url}"
+              username="${debug.tomcat.manager}"
+              password="${debug.tomcat.manager.password}"
+              path="/geoportal"
+              update="true"
+              war="geoportal.war"/>
+      -->
+
+   </target>
+
+   <!-- =========================================================================================== -->
+   <!-- Create the project's deployable war file.                                                   -->
+   <!-- =========================================================================================== -->
+   <target name="war" depends="compile,package" description="Create the project's deployable war file">
+      <zip destfile="geoportal.war">
+         <fileset dir='${build.dir}'/>
+      </zip>
+   </target>
+
+   <!-- =========================================================================================== -->
+   <!-- Executes the Ant reload task instructing Tomcat to reload the web application.              -->
+   <!-- ${local.tomcat.manager}, ${local.tomcat.manager.password} and ${tomcat.manager.url} should  -->
+   <!-- be set in properties file.                                                                  -->
+   <!-- =========================================================================================== -->
+   <target name="reload" depends="package" description="Install application to servlet container">
+
+     <reload url="${local.tomcat.manager.url}"
+             username="${local.tomcat.manager}"
+             password="${local.tomcat.manager.password}"
+             path="/geoportal"/>
+
+   </target>
+
+   <!-- =========================================================================================== -->
+   <!-- Packages/copies all of the compiled java classes, jsp files, config files, etc to the build -->
+   <!-- location or folder.                                                                         -->
+   <!-- =========================================================================================== -->
+   <target name="package" description="Compiles then packages application into exploded war directory.">
+      <copy todir='${build.dir}'>
+         <fileset dir='${www.dir}' excludes='**/*.bak,**/*.log'/>
+      </copy>
+
+      <copy todir='${classes.dir}/gpt'>
+         <fileset dir='${src.dir}/gpt' excludes='**/*.bak,**/*.log'/>
+      </copy>
+
+      <copy todir='${build.dir}/WEB-INF/lib'>
+         <fileset dir='${lib.dir}' excludes='**/*.bak,**/*.log'/>
+      </copy>
+
+      <copy todir='${classes.dir}'>
+         <fileset dir='${src.dir}' includes='**/*.properties' excludes='**/*.bak,**/*.log'/>
+      </copy>
+
+      <!-- ==== Copy the appropriate tomcat context file === -->
+      <copy file='${src.dir}/gpt/config/sillimanite_gpt.xml' tofile='${classes.dir}/gpt/config/gpt.xml'/>
+   </target>
+
+   <!-- =========================================================================================== -->
+   <!-- Executes the Ant task compiling all of the java source files.                               -->
+   <!-- =========================================================================================== -->
+   <target name='compile' depends='init' description="Compiles the project Java sources">
+
+      <javac srcdir="${src.dir}"
+             destdir="${classes.dir}"
+             classpathref="project.classpath"
+             includeantruntime='false'/>
+
+   </target>
+
+   <!-- =========================================================================================== -->
+   <!-- Initializes the project's work space.                                                       -->
+   <!-- =========================================================================================== -->
+   <target name='init' description='initializes workspace.'>
+      <mkdir dir='${src.dir}'/>
+      <mkdir dir='${lib.dir}'/>
+      <mkdir dir='${build.dir}'/>
+      <mkdir dir='${classes.dir}'/>
+      <mkdir dir='${docs.dir}'/>
+   </target>
+
+   <!-- =========================================================================================== -->
+   <!-- Cleans the project work space.                                                              -->
+   <!-- =========================================================================================== -->
+   <target name='clean' description='Cleanup the project workspace.'>
+      <delete dir="${build.dir}"/>
+      <delete dir="${docs.dir}"/>
+   </target>
+
+</project>

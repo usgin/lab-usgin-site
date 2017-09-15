@@ -1,0 +1,76 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<ch6:chainConfiguration xmlns:dm6="http://imaa.cnr.it/sdi/services/6.0/dataModel/schema" xmlns:ch6="http://imaa.cnr.it/sdi/services/6.0/chain/schema" xmlns:gco="http://www.isotc211.org/2005/gco" xmlns:gmd="http://www.isotc211.org/2005/gmd" xmlns:srv="http://www.isotc211.org/2005/srv" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns:gml="http://www.opengis.net/gml" xmlns:gts="http://www.isotc211.org/2005/gts" xmlns:rim="urn:oasis:names:tc:ebxml-regrep:xsd:rim:3.0" xmlns:wrs="http://www.opengis.net/cat/wrs/1.0" xmlns:ows="http://www.opengis.net/ows" xmlns:ogc="http://www.opengis.net/ogc" xmlns:csw="http://www.opengis.net/cat/csw/2.0.2" xmlns:apiso="http://www.opengis.net/cat/csw/apiso/1.0" xmlns:dct="http://purl.org/dc/terms/" xmlns:gsr="http://www.isotc211.org/2005/gsr" xmlns:msg6="http://imaa.cnr.it/sdi/services/6.0/messages/schema" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" name="" chainVersion="6.0" xsi:schemaLocation="http://imaa.cnr.it/sdi/services/6.0/chain/schema http://zeus.pin.unifi.it/schemas/lucansdi-services/6.0/Chain_6.0.0.xsd">
+    <ch6:head>
+        <ch6:type>DISTRIBUTOR</ch6:type>
+        <ch6:node>
+            <dm6:catalog id="USGIN Catalog Service@http://catalog.usgin.org/geonetwork/srv/en/csw">
+                <dm6:metadata>
+                    <gmd:MD_Metadata>
+                        <gmd:hierarchyLevel>
+                            <gmd:MD_ScopeCode codeListValue="service" codeList="http://www.isotc211.org/2005/resources/codeList.xml#MD_ScopeCode"></gmd:MD_ScopeCode>
+                        </gmd:hierarchyLevel>
+                        <gmd:hierarchyLevel>
+                            <gmd:MD_ScopeCode codeListValue="service" codeList="http://www.isotc211.org/2005/resources/codeList.xml#MD_ScopeCode"></gmd:MD_ScopeCode>
+                        </gmd:hierarchyLevel>
+                        <gmd:hierarchyLevel>
+                            <gmd:MD_ScopeCode codeListValue="service" codeList="http://www.isotc211.org/2005/resources/codeList.xml#MD_ScopeCode"></gmd:MD_ScopeCode>
+                        </gmd:hierarchyLevel>
+                        <gmd:hierarchyLevel>
+                            <gmd:MD_ScopeCode codeListValue="service" codeList="http://www.isotc211.org/2005/resources/codeList.xml#MD_ScopeCode"></gmd:MD_ScopeCode>
+                        </gmd:hierarchyLevel>
+                        <gmd:hierarchyLevel>
+                            <gmd:MD_ScopeCode codeListValue="service" codeList="http://www.isotc211.org/2005/resources/codeList.xml#MD_ScopeCode"/>
+                        </gmd:hierarchyLevel>
+                        <gmd:contact xlink:type="simple"/>
+                        <gmd:dateStamp>
+                            <gco:Date xsi:nil="true"/>
+                        </gmd:dateStamp>
+                        <gmd:identificationInfo xlink:type="simple">
+                            <srv:SV_ServiceIdentification>
+<gmd:citation xlink:type="simple">
+    <gmd:CI_Citation>
+        <gmd:title>
+            <gco:CharacterString>USGIN Catalog Service</gco:CharacterString>
+        </gmd:title>
+        <gmd:alternateTitle/>
+        <gmd:date xlink:type="simple"/>
+    </gmd:CI_Citation>
+</gmd:citation>
+<gmd:abstract>
+    <gco:CharacterString>U.S. Geoscince Information Network - http://usgin.org</gco:CharacterString>
+</gmd:abstract>
+<srv:serviceType>
+    <gco:LocalName>CSW/ISO</gco:LocalName>
+</srv:serviceType>
+<srv:serviceTypeVersion>
+    <gco:CharacterString>2.0.2</gco:CharacterString>
+</srv:serviceTypeVersion>
+<srv:couplingType/>
+<srv:containsOperations xlink:type="simple">
+    <srv:SV_OperationMetadata>
+        <srv:operationName>
+            <gco:CharacterString>USGIN Catalog Service</gco:CharacterString>
+        </srv:operationName>
+        <srv:DCP>
+            <srv:DCPList codeListValue="HttpGet" codeList=""/>
+        </srv:DCP>
+        <srv:connectPoint xlink:type="simple">
+            <gmd:CI_OnlineResource>
+                <gmd:linkage>
+                    <gmd:URL>http://catalog.usgin.org/geonetwork/srv/en/csw</gmd:URL>
+                </gmd:linkage>
+            </gmd:CI_OnlineResource>
+        </srv:connectPoint>
+    </srv:SV_OperationMetadata>
+</srv:containsOperations>
+                            </srv:SV_ServiceIdentification>
+                        </gmd:identificationInfo>
+                    </gmd:MD_Metadata>
+                </dm6:metadata>
+            </dm6:catalog>
+            <ch6:type>ACCESSOR</ch6:type>
+            <ch6:implClass>it.cnr.imaa.essi.sdi.accessor.CSWISOFactory</ch6:implClass>
+        </ch6:node>
+    </ch6:head>
+    <ch6:endpoint></ch6:endpoint>
+</ch6:chainConfiguration>

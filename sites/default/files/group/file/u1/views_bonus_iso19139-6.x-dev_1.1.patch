@@ -1,0 +1,1040 @@
+Index: export/views_bonus_export.theme.inc
+===================================================================
+RCS file: /cvs/drupal-contrib/contributions/modules/views_bonus/export/views_bonus_export.theme.inc,v
+retrieving revision 1.7
+diff -u -r1.7 views_bonus_export.theme.inc
+--- export/views_bonus_export.theme.inc	6 Apr 2010 00:00:34 -0000	1.7
++++ export/views_bonus_export.theme.inc	14 Apr 2010 19:19:55 -0000
+@@ -78,3 +78,27 @@
+     }
+   }
+ }
++
++/**
++ * Preprocess ISO 19139 xml output template.
++ */
++function template_preprocess_views_bonus_export_iso(&$vars) {
++  _views_bonus_export_shared_preprocess($vars);
++
++  foreach ($vars['themed_rows'] as $num => $row) {
++    foreach ($row as $field => $content) {
++			// Add semicolon delimiter between multiple values seperated by DIV and SPAN tags 
++			$content = str_replace(array('</div><div', '</span><span'), array('</div>; <div', '</span>; <span'), $content);
++			// Strip HTML tags (not supported ISO 19139 XML)
++			$content = strip_tags($content);
++      // Prevent double encoding of the ampersand. Look for the entities produced by check_plain().
++      $content = preg_replace('/&(?!(amp|quot|#039|lt|gt);)/', '&amp;', $content);
++      // Convert < and > to HTML entities.
++      $content = str_replace(
++        array('<', '>'),
++        array('&lt;', '&gt;'),
++        $content);
++      $vars['themed_rows'][$num][$field] = trim($content);
++    }
++  }
++}
+Index: export/views_bonus_export.views.inc
+===================================================================
+RCS file: /cvs/drupal-contrib/contributions/modules/views_bonus/export/views_bonus_export.views.inc,v
+retrieving revision 1.9
+diff -u -r1.9 views_bonus_export.views.inc
+--- export/views_bonus_export.views.inc	8 Jan 2010 20:55:21 -0000	1.9
++++ export/views_bonus_export.views.inc	14 Apr 2010 19:19:55 -0000
+@@ -96,6 +96,21 @@
+         'export headers' => array('Content-Type: text/xml'),
+         'export feed type' => 'xml',
+       ),
++      'views_iso' => array(
++        'title' => t('ISO 19139 XML file'),
++        'help' => t('Display the view as a txt file.'),
++        'path' => $path,
++        'handler' => 'views_bonus_plugin_style_export_iso',
++        'parent' => 'views_bonus_export',
++        'theme' => 'views_bonus_export_iso',
++        'theme file' => 'views_bonus_export.theme.inc',
++        'uses row plugin' => FALSE,
++        'uses fields' => TRUE,
++        'uses options' => TRUE,
++        'type' => 'feed',
++        'export headers' => array('Content-Type: text/xml'),
++        'export feed type' => 'xml',
++      ),
+     ),
+   );
+ }
+Index: export/views-bonus-export-iso.tpl.php
+===================================================================
+RCS file: export/views-bonus-export-iso.tpl.php
+diff -N export/views-bonus-export-iso.tpl.php
+--- /dev/null	1 Jan 1970 00:00:00 -0000
++++ export/views-bonus-export-iso.tpl.php	1 Jan 1970 00:00:00 -0000
+@@ -0,0 +1,934 @@
++<?php
++// $ $
++/* @file views-view-table.tpl.php
++ * Template to display a view as a table.
++ *
++ * - $title : The title of this group of rows.  May be empty.
++ * - $rows: An array of row items. Each row is an array of content
++ *   keyed by field ID.
++ * - $header: an array of headers(labels) for fields.
++ * - $themed_rows: a array of rows with themed fields.
++ * @ingroup views_templates
++ */
++
++/**
++* Minimum (plus some optional elements) ISO 19139 Geospatial Dataset Metadata 
++* based on the USGIN v1.1 Profile 
++* U.S. Geoscience Information System (USGIN) - http://lab.usgin.org
++* 
++* KEY:  
++*    (M/C/O/X) - Mandatory, Conditional, Optional, Not Used 
++*    NAP - North American Profile of ISO 19115:2003
++*      http://www.fgdc.gov/standards/projects/incits-l1-standards-projects/NAP-Metadata
++* 
++* LABELS for themed_rows (drupal, CCK, etc. fields). The field labels are used as keys to populate the ISO 19139 Dataset Metadata Template with field values. 
++*
++* - fileIdentifier    (M) Metadata file identifier - A unique File Identifier (GUID) - USGIN recommends using a valid Universally Unique Identifier (UUID)
++*
++* - metadata_language    (M) Metadata language - USGIN prefers ISO's <ISO639-2  three letter language code - lower case> formatting.
++*
++* - metadata_characterSet    (M) Defaults to utf8 - MD_CharacterSetCode names: {ucs2, ucs4, utf7, utf8, utf16, 8859part1, 8859part2, 8859part3, 8859part4, 8859part5, 8859part6, 8859part7, 8859part8, 8859part9, 8859part10, 8859part11, 8859part13, 8859part14, 8859part15, 8859part16, jis, shiftJIS, eucJP, usAscii, ebcdic, eucKR, big5, GB2312}
++*
++* - hierarchyLevel    (M) Resource type - Define if this record is a: dataset (default), service, feature, software, etc. This metadata record template is only valid for dataset resources!
++*
++* - hierarchyLevelName    (M) Resource hierarchy level name - ISO 19115 assumes that the metadata hierarchy level name defaults to "dataset" if it is not documented. NAP does not use it, recognizing that it is redundant. USGIN makes this property mandatory to identify the USGIN resource type (see USGIN Profile, "Resources of Interest"). Default USGIN hierarchyLevelName.CharacterString is "Dataset." Encode hierarchy by including hierarchyLevelName elements for all broader resource categories. E.g. default should also include a hierarchyLevelName="Collection" element. For services USGIN hierarchyLevelName.CharacterString is "Service". As use cases develop that provide rationale for definition of sub-categories of service, the resource category list will be expanded.
++*
++* - (M) Metadata Point of Contact - Contact regarding metadata questions, error notifications, etc. (metadata_contact_individualName + metadata_contact_organisationName + metadata_contact_positionName) > 0
++* -     metadata_contact_individualName    (C) Use semicolons to separate multiple individuals
++* -     metadata_contact_organisationName    (C)
++* -     metadata_contact_positionName    (C)
++* -         metadata_contact_voice    (O)
++* -         metadata_contact_facsimile    (O)
++* -         metadata_contact_deliveryPoint    (O)
++* -             metadata_contact_city    (C) Required if metadata_contact_deliveryPoint
++* -             metadata_contact_administrativeArea    (C) State, province, etc. - required if metadata_contact_deliveryPoint
++* -             metadata_contact_postalCode    (C) Required if metadata_contact_deliveryPoint
++* -             metadata_contact_country    (C) Required if metadata_contact_deliveryPoint
++* -         metadata_contact_electronicMailAddress    (M) Metadata point of contact e-mail address - mandatory in USGIN
++*
++* - metadata_contact_onlineResource_URL    (O) online resources - metadata online contact
++* -     metadata_contact_onlineResource_description    (O)
++*
++* - metadata_contact_hoursOfService    (O)
++*
++* - metadata_contact_contactInstructions    (O)
++* 
++* - metadata_dateStamp_DateTime    (M) The metadata creation or last update DateTime timestamp. USGIN (like NAP) requires an extended ISO 8601 formatted combined UTC date and time string (2009-11-17T12:00:00). Note: The INSPIRE profile requires only the metadata creation timestamp which would be useless for comparing metadata records during harvest processes.
++*
++* - dataSetURI    (C) Dataset Identifier - For USGIN, this is a string that uniquely identifies the described resource. If the resource has an identifier, it should be included here; if the resource will be referenced from other metadata, it must have an identifier here. If the dataset is coupled to a service, the value of the MD_Metadata/dataSetURI attribute is the unique resource identifier used by srv:coupledResource to link the service with the dataset. For the USGIN profile, the MD_Distribution  ransferOptions/MD_DigitalTransferOptions/ online/CI_OnlineResource is used to specify URLs for access to the resource.
++*
++* - citation_title    (M) Resource title - USGIN recommends using titles that inform the human reader about the dataset's content as well as its context.
++*
++* - (M) Resource reference date - Best practice is to include at least the date of publication or creation of the resource. The date of the resource reported in the citation corresponds to the resource's last update version according to its update frequency. CI_Date content includes a date and dateType. Date for USGIN profile uses xs:date data type, defined thus "date uses the date  imeSevenPropertyModel, with hour, minute, and second  required to be absent.  timezoneOffset  remains optional" (http://www.w3.org  R/xmlschema11-2).
++* -     citation_date    (M) USGIN Requires an extended ISO 8601 formatted combined UTC date and time string (2001-12-17T12:00:00). Use noon if no time is specified.
++* -         citation_dateType    (M) Default is publication - CI_DateTypeCode names: {creation, publication, revision} - NAP expands with {notAvailable, inForce, adopted, deprecated, superseded}
++*
++* - citation_identifier    (C) (C) Unique resource identifier  - NAP makes MD_Identifier mandatory for dataset and dataset series. For USGIN purposes, this element content value should be only considered an identifier for the citation, without any assumption that it will use http protocol. The identifier may be resolvable to a URL, if a protocol prefix specifies an identifier scheme that is resolvable (e.g. http, urn...), but this is not necessary for a valid document, and should not be assumed when processing metadata documents. For USGIN, IF the Citation has an identifier that is different from the identifier for the described resource (MD_Metadata/dataSetURI), it must be included here. RS_Identifier may substitute for MD_Identifier in the ISO19139 schema, but the USGIN profile requires use of MD_Identifer. If additional codespace and version content is associated with the identifier, it should be encoded as MD_Identifier/authority/ CI_Citation/ alternateTitle and MD_Identifier/ authority/ CI_Citation/ edition. 13 digit ISBN example: "urn:isbn:000-0-000-00000-0"
++*
++* - (M) Resource responsible party - The citation attribute provides information for citing the described resource. (citation_contact_individualName + citation_contact_organisationName + citation_contact_positionName) > 0
++* -     citation_contact_individualName    (C) Use semicolons to separate multiple authors. Strangely, ISO 19139 does not support multiple authors in any other way.
++* -     citation_contact_organisationName    (C)
++* -     citation_contact_positionName    (C)
++* -         (C) Citation Contact Information - ((citation_contact_voice OR metadata_contact_facsimile) + citation_contact_deliveryPoint + citation_contact_electronicMailAddress) > 0
++* -             citation_contact_voice    (C)
++* -             metadata_contact_facsimile    (C)
++* -             citation_contact_deliveryPoint    (C)
++* -                 citation_contact_city    (C) If citation_contact_deliveryPoint
++* -                 citation_contact_administrativeArea    (C) If citation_contact_deliveryPoint
++* -                 citation_contact_postalCode    (C) If citation_contact_deliveryPoint
++* -                 citation_contact_country    (C) If citation_contact_deliveryPoint
++* -             citation_contact_electronicMailAddress    (C)
++*
++* - citation_contact_onlineResource_URL    (O)
++* -     citation_contact_onlineResource_description    (O)
++*
++* - citation_contact_hoursOfService    (O)
++*
++* - citation_contact_contactInstructions    (O)
++*
++* - citation_otherCitationDetails    (O) Full citation string
++*
++* - resource_abstract    (M) Resource Abstract - A free text summary of the content, significance, purpose, scope, etc. of the resource.
++*
++* - resource_status_progressCode    (M) Resource Status - MD_ProgressCode names: {completed, historicalArchive, obsolete, onGoing, planned, required, underDevelopment} - NAP expands with {proposed}. Obsolete is synonymous with deprecated.
++*
++* - (C) Resource Point of Contact (access contact) - CI_ResponsibleParty element here would contain information for point of contact to access the resource. This information is mandatory for physical resources such as core, cuttings, samples, manuscripts. If Resource Point of Contact, then (resource_contact_individualName + resource_contact_organisationName + resource_contact_positionName) > 0
++* -     resource_contact_individualName    (C)
++* -     resource_contact_organisationName    (C)
++* -     resource_contact_positionName    (C)
++* -         (C) Resource Contact Information - ((resource_contact_voice OR resource_contact_facsimile) + resource_contact_deliveryPoint + resource_contact_electronicMailAddress) > 0
++* -             resource_contact_voice    (C)
++* -             resource_contact_facsimile    (C)
++* -             resource_contact_deliveryPoint    (C)
++* -                 resource_contact_city    (C) If resource_contact_deliveryPoint
++* -                 resource_contact_administrativeArea    (C) If resource_contact_deliveryPoint
++* -                 resource_contact_postalCode    (C) If resource_contact_deliveryPoint
++* -                 resource_contact_country    (C) If resource_contact_deliveryPoint
++* -             resource_contact_electronicMailAddress    (C)
++*
++* - resource_contact_onlineResource_URL    (O)
++* -     resource_contact_onlineResource_description    (O)
++*
++* - resource_contact_hoursOfService    (O)
++*
++* - resource_contact_contactInstructions    (O)
++*
++* -    (O) Resource keywords - Best Practice for USGIN profile metadata is to supply keywords to facilitate the discovery of metadata records relevant to the user. USGIN requires that MD_Keyword/keyword contain a CharacterString. USGIN best practice is to include keywords in English. Keyword Type - allowed values from MD_KeywordTypeCode names: {discipline, place, stratum, temporal, theme} - NAP expands with {product, subTopicCategory}.
++* - descriptiveKeywords_theme    (O) Use pipe (|) to separate multiple tags
++* - descriptiveKeywords_temporal    (O) Use pipe (|) to separate multiple tags
++* - descriptiveKeywords_place    (O) Use pipe (|) to separate multiple tags
++*
++* - resourceConstraints_useLimitation    (O) Condition applying to access and use of resource - Follow NAP for specification of resourceConstraints. This attribute provides information for access control to the described resource itself. In some situations, the metadataConstraints may allow a user to learn of the existence of a resource that they may not actually be able to access without further clearance. Constraints may be represented by MD_Constraint, MD_LegalConstraint, or MD_SecurityConstraint.
++*
++* - spatialResolution_equivalentScale_denominator    (C) Resource spatial resolution - If this is used, USGIN requires use of equivalentScale/../denominator to express spatial resolution, in order to be more easily interoperable.
++*
++* - resource_language    M) Resource language - Multiple instances of this element indicate that the linguistic content of the resource is available in multiple languages 
++*
++* - resource_topicCategory    (C) Topic category - NAP specifies that topicCategory code shall be provided when hierarchyLevel is set to "dataset" or "dataset series". Most USGIN resources will have topicCategory="geoscientificInformation", which is the default value for this profile.  More specific topic categorization should be done using keywords. NAP declares not applicable to services. MD_TopicCategoryCode names: {farming, biota, boundaries, climatologyMeterologyAtmosphere, economy, elevation, environment, geoscientificInformation, health, imageryBaseMapsEarthCover, intelligenceMilitary, inlandWater, location, oceans, planningCadastre, society, structure, transportation, utilitiesCommunication}
++*
++* - (C) Resource content extent - Defines the spatial (horizontal and vertical) and temporal region to which the content of the resource applies. For USGIN, the spatial extent is a rectangle that bounds the geographic extent to which resource content applies. NAP specifies required when hierarchyLevel is set to 'dataset'. USGIN specifies (extent_description + extent_westBoundLongitude + resource_TimePeriod_frame) > 0.
++* -     extent_description (C) Resource Content extent description - Free text that describes the spatial and temporal extent of the dataset. USGIN specifies that description is mandatory if a geographicElement or temporalElement is not provided. Note that if geographic place names are used to express the geographic extent, USGIN profile specifies that these should be encoded using keyword with keyword type code = 'place.' Geographic names may be duplicated in the EX_Extent/description.
++* -     extent_westBoundLongitude    (C) Resource content extent bounding box - USGIN profile requires that if an EX_Extent/geographicElement is supplied, it include a geographic bounding box with bounding latitude and longitude expressed using WGS 84 decimal degrees. The corner coordinates for the geographic bounding box must not coincide in one point, because this may result in fatal errors with some CSW implementations. Point locations must thus be represented as tiny rectangles. USGIN recommended practice is to place the actual point location in the lower left (min-x/min-y) corner of the rectangle.
++* -         extent_eastBoundLongitude (C) Required if extent_westBoundLongitude
++* -         extent_southBoundLatitude (C) Required if extent_westBoundLongitude
++* -         extent_northBoundLatitude (C) Required if extent_westBoundLongitude
++* -     resource_TimePeriod_frame    (C) USGIN requires the beginPosition and endPosition's frame property to be defined. The default value is #ISO-8601
++* -         extent_TimePeriod_name    (C) Required if resource_TimePeriod_frame
++* -         extent_TimePeriod_beginPosition    (C) Start ISO-8601 DateTime (if frame="#ISO-8601") - required if resource_TimePeriod_frame
++* -         extent_TimePeriod_endPosition    (C) End ISO-8601 DateTime (if frame="#ISO-8601") - required if resource_TimePeriod_frame
++*
++* - (O) Resource vertical extent. If used, both the minimum and maximum values are required.
++* - 	extent_verticalElement_minimumValue    (C) USGIN requires the values to be measured in meters above World mean sea level (MSL)
++* -     extent_verticalElement_maximumValue    (C) USGIN requires the values to be measured in meters above World mean sea level (MSL)
++*
++*
++* - (O) <gmd:distributionInfo> Resource distribution information - This element provides information to inform users how to obtain or access the described resource.  NOTE: there are several ways elements can be nested within MD_Distribution. If ((distributor_contact_individualName OR distributor_contact_organisationName OR distributor_contact_positionName) AND (distributorTransferOptions_url OR distributionOrderProcess_orderingInstructions))
++* - 	(C) <gmd:distributor> Resource distributor information - USGIN differs from NAP in this case (but not with ISO19115) by allowing multiple distributors, and binding between distributors, transfer options, and formats.
++* -		(C) <gmd:MD_Distributor> For USGIN profile, each distributor/MD_Distributor is a binding between one or more transfer options and the distributor formats that are available through that/those transfer options (MD_DigitalTransferOptions/onLine/CI_OnlineResource in particular). If different formats are available from the same distributor, or have different transfer options, these should be represented as different distributor/MD_Distributor instances. See the USGIN Profile section 'Use of MD_Distribution and MD_Distributor' for instructions on use of these elements.
++*
++*
++* - (C) Distribution Responsible Party - For CI_ResponsibleParty, count of (distributor_contact_individualName + distributor_contact_organisationName + distributor_contact_positionName) > 0
++* -     distributor_contact_individualName    (C)
++* -     distributor_contact_organisationName    (C)
++* -     distributor_contact_positionName    (C)
++* -         (C) Distributor Contact Information - ((distributor_contact_voice OR distributor_contact_facsimile) + distributor_contact_deliveryPoint + distributor_contact_electronicMailAddress) > 0
++* -             distributor_contact_voice    (C)
++* -             distributor_contact_facsimile    (C)
++* -             distributor_contact_deliveryPoint    (C)
++* -                 distributor_contact_city    (C) If distributor_contact_deliveryPoint exists
++* -                 distributor_contact_administrativeArea    (C) If distributor_contact_deliveryPoint exists
++* -                 distributor_contact_postalCode    (C) If distributor_contact_deliveryPoint exists
++* -                 distributor_contact_country    (C) If distributor_contact_deliveryPoint exists
++* -             distributor_contact_electronicMailAddress    (C)
++*
++* - distributor_contact_onlineResource_URL    (O)
++* -     distributor_contact_onlineResource_description    (O)
++*
++* - distributor_contact_hoursOfService    (O)
++*
++* - distributor_contact_contactInstructions    (O)
++* 
++* - distributionOrderProcess_orderingInstructions	(O) Resource distributor order process - Information on the availability of the service which includes at least one of fees, available date and time, ordering instructions, or turnaround.
++* -	distributionOrderProcess_fees	(O)
++* - 	distributionOrderProcess_turnaround	(O)
++*
++* - distributorTransferOptions_url	(O) Resource distributor on-line distribution linkage - Digital transfer options are "technical means and media by which a dataset is obtained from the distributor." NAP requires CI_OnlineResource/linkage and CI_OnlineResource/protocol in CI_OnlineResource.
++* - 	distributorTransferOptions_description	(O)
++*/
++
++// Created $content array indexed by $label
++foreach ($themed_rows as $count => $row): 
++  $fields = array(""=>"");
++  foreach ($row as $field => $content):
++    $label = $header[$field] ? $header[$field] : $field;
++    $fields[$label] = $content;
++  endforeach; 
++  // debug
++  //print "<!-- DEBUG  \n ";
++  //print_r($fields);
++  //print "-->";
++	
++// Short tags act bad below in the html so we print it here.
++print '<?xml version="1.0" encoding="UTF-8" ?>';
++?>
++<!--**********************************************************
++*** ISO 19139 geospatial dataset metadata record 
++*** based on the USGIN v1.1 Profile for ISO 19139
++*** U.S. Geoscience Information System (USGIN) 
++*** http://lab.usgin.org/profiles/usgin-iso-19139-profile
++***********************************************************-->
++<gmd:MD_Metadata 
++  xmlns:gmd="http://www.isotc211.org/2005/gmd" 
++  xmlns:gco="http://www.isotc211.org/2005/gco" 
++  xmlns:gml="http://www.opengis.net/gml" 
++  xmlns:xlink="http://www.w3.org/1999/xlink" 
++  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
++  xsi:schemaLocation="http://www.isotc211.org/2005/gmd http://schemas.opengis.net/csw/2.0.2/profiles/apiso/1.0.0/apiso.xsd">
++  <gmd:fileIdentifier>
++    <gco:CharacterString><?php print $fields["fileIdentifier"]; ?></gco:CharacterString>
++  </gmd:fileIdentifier>
++  <gmd:language>
++    <gco:CharacterString><?php print $fields["metadata_language"]; ?></gco:CharacterString>
++  </gmd:language>
++  <gmd:characterSet>
++    <gmd:MD_CharacterSetCode 
++      codeList="http://standards.iso.org/ittf/PubliclyAvailableStandards/ISO_19139_Schemas/resources/Codelist/gmxCodelists.xml#MD_CharacterSetCode" 
++      codeListValue="<?php print $fields["metadata_characterSet"]; ?>"><?php print $fields["metadata_characterSet"]; ?></gmd:MD_CharacterSetCode>
++  </gmd:characterSet>
++  <gmd:hierarchyLevel>
++    <gmd:MD_ScopeCode 
++      codeList="http://standards.iso.org/ittf/PubliclyAvailableStandards/ISO_19139_Schemas/resources/Codelist/gmxCodelists.xml#MD_ScopeCode" 
++      codeListValue="<?php print $fields["hierarchyLevel"]; ?>"><?php print $fields["hierarchyLevel"]; ?></gmd:MD_ScopeCode>
++  </gmd:hierarchyLevel>
++  <gmd:hierarchyLevelName>
++    <gco:CharacterString><?php print $fields["hierarchyLevelName"]; ?></gco:CharacterString>
++  </gmd:hierarchyLevelName>
++  <!-- Metadata point of contact - Point of contact for the metadata record, e.g. for users to report errors, updates to metadata, etc. -->
++  <gmd:contact>
++    <gmd:CI_ResponsibleParty>
++      <?php if ($fields["metadata_contact_individualName"]) {?>
++      <gmd:individualName>
++        <gco:CharacterString><?php print $fields["metadata_contact_individualName"]; ?></gco:CharacterString>
++      </gmd:individualName>
++      <?php } ?>
++      <?php if ($fields["metadata_contact_organisationName"]) {?>
++      <gmd:organisationName>
++        <gco:CharacterString><?php print $fields["metadata_contact_organisationName"]; ?></gco:CharacterString>
++      </gmd:organisationName>
++      <?php } ?>
++      <?php if ($fields["metadata_contact_positionName"]) {?>
++      <gmd:positionName>
++        <gco:CharacterString><?php print $fields["metadata_contact_positionName"]; ?></gco:CharacterString>
++      </gmd:positionName>
++      <?php } ?>
++      <gmd:contactInfo>
++        <gmd:CI_Contact>
++          <?php if (($fields["metadata_contact_voice"]) || ($fields["metadata_contact_facsimile"])) {?>
++          <gmd:phone>
++            <gmd:CI_Telephone>
++              <?php if ($fields["metadata_contact_voice"]) {?>
++              <gmd:voice>
++                <gco:CharacterString><?php print $fields["metadata_contact_voice"]; ?></gco:CharacterString>
++              </gmd:voice>
++              <?php } ?>
++              <?php if ($fields["metadata_contact_facsimile"]) {?>
++              <gmd:facsimile>
++                <gco:CharacterString><?php print $fields["metadata_contact_facsimile"]; ?></gco:CharacterString>
++              </gmd:facsimile>
++              <?php } ?>
++            </gmd:CI_Telephone>
++          </gmd:phone>
++          <?php } ?>
++          <gmd:address>
++            <gmd:CI_Address>
++              <?php if ($fields["metadata_contact_deliveryPoint"]) {?>
++              <gmd:deliveryPoint>
++                <gco:CharacterString><?php print $fields["metadata_contact_deliveryPoint"]; ?></gco:CharacterString>
++              </gmd:deliveryPoint>
++              <gmd:city>
++                <gco:CharacterString><?php print $fields["metadata_contact_city"]; ?></gco:CharacterString>
++              </gmd:city>
++              <gmd:administrativeArea>
++                <gco:CharacterString><?php print $fields["metadata_contact_administrativeArea"]; ?></gco:CharacterString>
++              </gmd:administrativeArea>
++              <gmd:postalCode>
++                <gco:CharacterString><?php print $fields["metadata_contact_postalCode"]; ?></gco:CharacterString>
++              </gmd:postalCode>
++              <gmd:country>
++                <gco:CharacterString><?php print $fields["metadata_contact_country"]; ?></gco:CharacterString>
++              </gmd:country>
++              <?php } ?>
++              <gmd:electronicMailAddress>
++                <gco:CharacterString><?php print $fields["metadata_contact_electronicMailAddress"]; ?></gco:CharacterString>
++              </gmd:electronicMailAddress>
++            </gmd:CI_Address>
++          </gmd:address>
++          <?php if ($fields["metadata_contact_onlineResource_URL"]) {?>
++          <gmd:onlineResource>
++            <gmd:CI_OnlineResource>
++              <gmd:linkage>
++                <gmd:URL><?php print $fields["metadata_contact_onlineResource_URL"]; ?></gmd:URL>
++              </gmd:linkage>
++              <gmd:protocol>
++                <gco:CharacterString>http</gco:CharacterString>
++              </gmd:protocol>
++              <?php if ($fields["metadata_contact_onlineResource_description"]) {?>
++              <gmd:description>
++                <gco:CharacterString><?php print $fields["metadata_contact_onlineResource_description"]; ?></gco:CharacterString>
++              </gmd:description>
++              <?php } ?>
++            </gmd:CI_OnlineResource>
++          </gmd:onlineResource>
++          <?php } ?>
++          <?php if ($fields["metadata_contact_hoursOfService"]) {?>
++          <gmd:hoursOfService>
++            <gco:CharacterString><?php print $fields["metadata_contact_hoursOfService"]; ?></gco:CharacterString>
++          </gmd:hoursOfService>
++          <?php } ?>
++          <?php if ($fields["metadata_contact_contactInstructions"]) {?>
++          <gmd:contactInstructions>
++            <gco:CharacterString><?php print $fields["metadata_contact_contactInstructions"]; ?></gco:CharacterString>
++          </gmd:contactInstructions>
++          <?php } ?>  
++        </gmd:CI_Contact>
++      </gmd:contactInfo>
++      <gmd:role>
++        <gmd:CI_RoleCode 
++          codeList="http://standards.iso.org/ittf/PubliclyAvailableStandards/ISO_19139_Schemas/resources/Codelist/gmxCodelists.xml#CI_RoleCode" 
++          codeListValue="pointOfContact">point of contact</gmd:CI_RoleCode>
++      </gmd:role>
++    </gmd:CI_ResponsibleParty>
++  </gmd:contact>
++  <gmd:dateStamp>
++    <gco:DateTime><?php print $fields["metadata_dateStamp_DateTime"]; ?></gco:DateTime>
++  </gmd:dateStamp>
++  <gmd:metadataStandardName>
++    <gco:CharacterString>ISO-NAP-USGIN</gco:CharacterString>
++  </gmd:metadataStandardName>
++  <gmd:metadataStandardVersion>
++    <gco:CharacterString>1.1</gco:CharacterString>
++  </gmd:metadataStandardVersion>
++   <?php if ($fields["dataSetURI"]) {?>
++  <gmd:dataSetURI>
++    <gco:CharacterString><?php print $fields["dataSetURI"]; ?></gco:CharacterString>
++  </gmd:dataSetURI>
++  <?php } ?>
++  <!-- **************** -->
++  <gmd:identificationInfo>
++    <gmd:MD_DataIdentification>
++      <gmd:citation>
++        <gmd:CI_Citation>
++          <gmd:title>
++            <gco:CharacterString><?php print $fields["citation_title"]; ?></gco:CharacterString>
++          </gmd:title>
++          <gmd:date>
++            <gmd:CI_Date>
++              <gmd:date>
++                <gco:DateTime><?php print $fields["citation_date"]; ?></gco:DateTime>
++              </gmd:date>
++              <gmd:dateType>
++                <gmd:CI_DateTypeCode 
++                  codeList="http://standards.iso.org/ittf/PubliclyAvailableStandards/ISO_19139_Schemas/resources/Codelist/gmxCodelists.xml#CI_DateTypeCode" 
++                  codeListValue="<?php print $fields["citation_dateType"]; ?>"><?php print $fields["citation_dateType"]; ?></gmd:CI_DateTypeCode>
++              </gmd:dateType>
++            </gmd:CI_Date>
++          </gmd:date>
++          <?php if ($fields["citation_identifier"]) {?>
++          <gmd:identifier>
++            <gmd:MD_Identifier>
++              <gmd:code>
++                <gco:CharacterString><?php print $fields["citation_identifier"]; ?></gco:CharacterString>
++              </gmd:code>
++            </gmd:MD_Identifier>
++          </gmd:identifier>
++          <?php } ?>
++          <!-- (M) Resource Ciatation (Responsible Party) - The citation attribute provides information for citing the described resource. Citation is defined by Webster as "an act of quoting". The precise semantics of what an identification/citation is supposed to be are not very well articulated in ISO19115. For USGIN purposes, this should be viewed as information to identify the intellectual origin (or property) of the content in the described resource, along the lines of a citation in a scientific journal. -->
++          <gmd:citedResponsibleParty>
++            <gmd:CI_ResponsibleParty>
++              <?php if ($fields["citation_contact_individualName"]) {?>
++              <gmd:individualName>
++                <gco:CharacterString><?php print $fields["citation_contact_individualName"]; ?></gco:CharacterString>
++              </gmd:individualName>
++              <?php } ?>
++              <?php if ($fields["citation_contact_organisationName"]) {?>
++              <gmd:organisationName>
++                <gco:CharacterString><?php print $fields["citation_contact_organisationName"]; ?></gco:CharacterString>
++              </gmd:organisationName>
++              <?php if ($fields["citation_contact_positionName"]) {?>
++              <?php } ?>
++              <gmd:positionName>
++                <gco:CharacterString><?php print $fields["citation_contact_positionName"]; ?></gco:CharacterString>
++              </gmd:positionName>
++              <?php } ?>
++              <?php if (($fields["citation_contact_voice"]) || ($fields["citation_contact_facsimile"]) || ($fields["citation_contact_deliveryPoint"]) || ($fields["citation_contact_electronicMailAddress"])) {?>
++              <gmd:contactInfo>
++                <gmd:CI_Contact>
++                  <?php if (($fields["citation_contact_voice"]) || ($fields["citation_contact_facsimile"])) {?>
++                  <gmd:phone>
++                    <gmd:CI_Telephone>
++                      <?php if ($fields["citation_contact_voice"]) {?>
++                      <gmd:voice>
++                        <gco:CharacterString><?php print $fields["citation_contact_voice"]; ?></gco:CharacterString>
++                      </gmd:voice>
++                      <?php } ?>
++                      <?php if ($fields["citation_contact_facsimile"]) {?>
++                      <gmd:facsimile>
++                        <gco:CharacterString><?php print $fields["citation_contact_facsimile"]; ?></gco:CharacterString>
++                      </gmd:facsimile>
++                      <?php } ?>
++                    </gmd:CI_Telephone>
++                  </gmd:phone>
++                  <?php } ?>
++                  <?php if (($fields["citation_contact_deliveryPoint"]) || ($fields["citation_contact_electronicMailAddress"])) {?>
++                  <gmd:address>
++                    <gmd:CI_Address>
++                      <?php if ($fields["citation_contact_deliveryPoint"]) {?>
++                      <gmd:deliveryPoint>
++                        <gco:CharacterString><?php print $fields["citation_contact_deliveryPoint"]; ?></gco:CharacterString>
++                      </gmd:deliveryPoint>
++                      <gmd:city>
++                        <gco:CharacterString><?php print $fields["citation_contact_city"]; ?></gco:CharacterString>
++                      </gmd:city>
++                      <gmd:administrativeArea>
++                        <gco:CharacterString><?php print $fields["citation_contact_administrativeArea"]; ?></gco:CharacterString>
++                      </gmd:administrativeArea>
++                      <gmd:postalCode>
++                        <gco:CharacterString><?php print $fields["citation_contact_postalCode"]; ?></gco:CharacterString>
++                      </gmd:postalCode>
++                      <gmd:country>
++                        <gco:CharacterString><?php print $fields["citation_contact_country"]; ?></gco:CharacterString>
++                      </gmd:country>
++                      <?php } ?>
++                      <?php if ($fields["citation_contact_electronicMailAddress"]) {?>
++                      <gmd:electronicMailAddress>
++                        <gco:CharacterString><?php print $fields["citation_contact_electronicMailAddress"]; ?></gco:CharacterString>
++                      </gmd:electronicMailAddress>
++                      <?php } ?>
++                    </gmd:CI_Address>
++                  </gmd:address>
++                  <?php } ?>
++                  <?php if ($fields["citation_contact_onlineResource_URL"]) {?>
++                  <gmd:onlineResource>
++                    <gmd:CI_OnlineResource>
++                      <gmd:linkage>
++                        <gmd:URL><?php print $fields["citation_contact_onlineResource_URL"]; ?></gmd:URL>
++                      </gmd:linkage>
++                      <gmd:protocol>
++                        <gco:CharacterString>http</gco:CharacterString>
++                      </gmd:protocol>
++                      <?php if ($fields["citation_contact_onlineResource_description"]) {?>
++                      <gmd:description>
++                        <gco:CharacterString><?php print $fields["citation_contact_onlineResource_description"]; ?></gco:CharacterString>
++                      </gmd:description>
++                      <?php } ?>
++                    </gmd:CI_OnlineResource>
++                  </gmd:onlineResource>
++                  <?php } ?>
++                  <?php if ($fields["citation_contact_hoursOfService"]) {?>
++                  <gmd:hoursOfService>
++                    <gco:CharacterString><?php print $fields["citation_contact_hoursOfService"]; ?></gco:CharacterString>
++                  </gmd:hoursOfService>
++                  <?php } ?>
++                  <?php if ($fields["citation_contact_contactInstructions"]) {?>
++                  <gmd:contactInstructions>
++                    <gco:CharacterString><?php print $fields["citation_contact_contactInstructions"]; ?></gco:CharacterString>
++                  </gmd:contactInstructions>
++                  <?php } ?>
++                </gmd:CI_Contact>
++              </gmd:contactInfo>
++              <?php } ?>
++              <gmd:role>
++                <gmd:CI_RoleCode 
++                  codeList="http://standards.iso.org/ittf/PubliclyAvailableStandards/ISO_19139_Schemas/resources/Codelist/gmxCodelists.xml#CI_RoleCode" 
++                  codeListValue="author">author</gmd:CI_RoleCode>
++              </gmd:role>
++            </gmd:CI_ResponsibleParty>
++          </gmd:citedResponsibleParty>
++          <?php if ($fields["citation_otherCitationDetails"]) {?>
++          <gmd:otherCitationDetails>
++            <gco:CharacterString><?php print $fields["citation_otherCitationDetails"]; ?></gco:CharacterString>
++          </gmd:otherCitationDetails>
++          <?php } ?>
++        </gmd:CI_Citation>
++      </gmd:citation>
++      <gmd:abstract>
++        <gco:CharacterString><?php print $fields["resource_abstract"]; ?></gco:CharacterString>
++      </gmd:abstract>
++      <gmd:status>
++        <gmd:MD_ProgressCode 
++          codeList="http://standards.iso.org/ittf/PubliclyAvailableStandards/ISO_19139_Schemas/resources/Codelist/gmxCodelists.xml#MD_ProgressCode" 
++          codeListValue="<?php print $fields["resource_status_progressCode"]; ?>"><?php print $fields["resource_status_progressCode"]; ?></gmd:MD_ProgressCode>
++      </gmd:status>
++      <?php if (($fields["resource_contact_individualName"]) || ($fields["resource_contact_organisationName"]) || ($fields["resource_contact_positionName"])) {?>
++      <!-- (C) Resource point of contact (access contact) - CI_ResponsibleParty element here would contain information for point of contact to access the resource. This information is mandatory for physical resources such as core, cuttings, samples, manuscripts. -->
++      <gmd:pointOfContact>
++        <gmd:CI_ResponsibleParty>
++          <?php if ($fields["resource_contact_individualName"]) {?>
++          <gmd:individualName>
++            <gco:CharacterString><?php print $fields["resource_contact_individualName"]; ?></gco:CharacterString>
++          </gmd:individualName>
++          <?php } ?>
++          <?php if ($fields["resource_contact_organisationName"]) {?>
++          <gmd:organisationName>
++            <gco:CharacterString><?php print $fields["resource_contact_organisationName"]; ?></gco:CharacterString>
++          </gmd:organisationName>
++          <?php } ?>
++          <?php if ($fields["resource_contact_positionName"]) {?>
++          <gmd:positionName>
++            <gco:CharacterString><?php print $fields["resource_contact_positionName"]; ?></gco:CharacterString>
++          </gmd:positionName>
++          <?php } ?>
++          <?php if (($fields["resource_contact_voice"]) || ($fields["resource_contact_facsimile"]) || ($fields["resource_contact_deliveryPoint"]) || ($fields["resource_contact_electronicMailAddress"])) {?>
++          <gmd:contactInfo>
++            <gmd:CI_Contact>
++              <?php if (($fields["resource_contact_voice"]) || ($fields["resource_contact_facsimile"])) {?>
++              <gmd:phone>
++                <gmd:CI_Telephone>
++                  <?php if ($fields["resource_contact_voice"]) {?>
++                  <gmd:voice>
++                    <gco:CharacterString><?php print $fields["resource_contact_voice"]; ?></gco:CharacterString>
++                  </gmd:voice>
++                  <?php } ?>
++                  <?php if ($fields["resource_contact_facsimile"]) {?>
++                  <gmd:facsimile>
++                    <gco:CharacterString><?php print $fields["resource_contact_facsimile"]; ?></gco:CharacterString>
++                  </gmd:facsimile>
++                  <?php } ?>
++                </gmd:CI_Telephone>
++              </gmd:phone>
++              <?php } ?>
++              <?php if (($fields["resource_contact_deliveryPoint"]) || ($fields["resource_contact_electronicMailAddress"])) {?>
++              <gmd:address>
++                <gmd:CI_Address>
++                  <?php if ($fields["resource_contact_deliveryPoint"]) {?>
++                  <gmd:deliveryPoint>
++                    <gco:CharacterString><?php print $fields["resource_contact_deliveryPoint"]; ?></gco:CharacterString>
++                  </gmd:deliveryPoint>
++                  <gmd:city>
++                    <gco:CharacterString><?php print $fields["resource_contact_city"]; ?></gco:CharacterString>
++                  </gmd:city>
++                  <gmd:administrativeArea>
++                    <gco:CharacterString><?php print $fields["resource_contact_administrativeArea"]; ?></gco:CharacterString>
++                  </gmd:administrativeArea>
++                  <gmd:postalCode>
++                    <gco:CharacterString><?php print $fields["resource_contact_postalCode"]; ?></gco:CharacterString>
++                  </gmd:postalCode>
++                  <gmd:country>
++                    <gco:CharacterString><?php print $fields["resource_contact_country"]; ?></gco:CharacterString>
++                  </gmd:country>
++                  <?php } ?>
++                  <?php if ($fields["resource_contact_electronicMailAddress"]) {?>
++                  <gmd:electronicMailAddress>
++                    <gco:CharacterString><?php print $fields["resource_contact_electronicMailAddress"]; ?></gco:CharacterString>
++                  </gmd:electronicMailAddress>
++                  <?php } ?>
++                </gmd:CI_Address>
++              </gmd:address>
++              <?php } ?>
++              <?php if ($fields["resource_contact_onlineResource_URL"]) {?>
++              <gmd:onlineResource>
++                <gmd:CI_OnlineResource>
++                  <gmd:linkage>
++                    <gmd:URL><?php print $fields["resource_contact_onlineResource_URL"]; ?></gmd:URL>
++                  </gmd:linkage>
++                  <gmd:protocol>
++                    <gco:CharacterString>http</gco:CharacterString>
++                  </gmd:protocol>
++                  <?php if ($fields["resource_contact_onlineResource_description"]) {?>
++                  <gmd:description>
++                    <gco:CharacterString><?php print $fields["resource_contact_onlineResource_description"]; ?></gco:CharacterString>
++                  </gmd:description>
++                  <?php } ?>
++                </gmd:CI_OnlineResource>
++              </gmd:onlineResource>
++              <?php } ?>
++              <?php if ($fields["resource_contact_hoursOfService"]) {?>
++              <gmd:hoursOfService>
++                <gco:CharacterString><?php print $fields["resource_contact_hoursOfService"]; ?></gco:CharacterString>
++              </gmd:hoursOfService>
++              <?php } ?>
++              <?php if ($fields["resource_contact_contactInstructions"]) {?>
++              <gmd:contactInstructions>
++                <gco:CharacterString><?php print $fields["resource_contact_contactInstructions"]; ?></gco:CharacterString>
++              </gmd:contactInstructions>
++              <?php } ?>
++            </gmd:CI_Contact>
++          </gmd:contactInfo>
++          <?php } ?>
++          <gmd:role>
++            <gmd:CI_RoleCode 
++              codeList="http://standards.iso.org/ittf/PubliclyAvailableStandards/ISO_19139_Schemas/resources/Codelist/gmxCodelists.xml#CI_RoleCode" 
++              codeListValue="pointOfContact">point of contact</gmd:CI_RoleCode>
++          </gmd:role>
++        </gmd:CI_ResponsibleParty>
++      </gmd:pointOfContact>
++      <?php } ?>
++      <?php if ($fields["descriptiveKeywords_theme"]) {
++        $keywordsArr = explode("|", $fields["descriptiveKeywords_theme"]);
++        ?>
++      <gmd:descriptiveKeywords>
++        <gmd:MD_Keywords>
++          <?php foreach ($keywordsArr as $keyword) { ?>
++          <gmd:keyword>
++            <gco:CharacterString><?php print trim($keyword); ?></gco:CharacterString>
++          </gmd:keyword>
++          <?php } ?>
++          <gmd:type>
++            <gmd:MD_KeywordTypeCode 
++              codeList="http://standards.iso.org/ittf/PubliclyAvailableStandards/ISO_19139_Schemas/resources/Codelist/gmxCodelists.xml#MD_KeywordTypeCode" 
++              codeListValue="theme">theme</gmd:MD_KeywordTypeCode>
++          </gmd:type>
++        </gmd:MD_Keywords>
++      </gmd:descriptiveKeywords>
++      <?php } ?>
++      <?php if ($fields["descriptiveKeywords_temporal"]) {
++        $keywordsArr = explode("|", $fields["descriptiveKeywords_temporal"]);
++        ?>
++      <gmd:descriptiveKeywords>
++        <gmd:MD_Keywords>
++          <?php foreach ($keywordsArr as $keyword) { ?>
++          <gmd:keyword>
++            <gco:CharacterString><?php print trim($keyword); ?></gco:CharacterString>
++          </gmd:keyword>
++          <?php } ?>
++          <gmd:type>
++            <gmd:MD_KeywordTypeCode 
++              codeList="http://standards.iso.org/ittf/PubliclyAvailableStandards/ISO_19139_Schemas/resources/Codelist/gmxCodelists.xml#MD_KeywordTypeCode" 
++              codeListValue="temporal">temporal</gmd:MD_KeywordTypeCode>
++          </gmd:type>
++        </gmd:MD_Keywords>
++      </gmd:descriptiveKeywords>
++      <?php } ?>
++      <?php if ($fields["descriptiveKeywords_place"]) {
++        $keywordsArr = explode("|", $fields["descriptiveKeywords_place"]);
++        ?>
++      <gmd:descriptiveKeywords>
++        <gmd:MD_Keywords>
++          <?php foreach ($keywordsArr as $keyword) { ?>
++          <gmd:keyword>
++            <gco:CharacterString><?php print trim($keyword); ?></gco:CharacterString>
++          </gmd:keyword>
++          <?php } ?>
++          <gmd:type>
++            <gmd:MD_KeywordTypeCode 
++              codeList="http://standards.iso.org/ittf/PubliclyAvailableStandards/ISO_19139_Schemas/resources/Codelist/gmxCodelists.xml#MD_KeywordTypeCode" 
++              codeListValue="place">place</gmd:MD_KeywordTypeCode>
++          </gmd:type>
++        </gmd:MD_Keywords>
++      </gmd:descriptiveKeywords>
++      <?php } ?>
++      <?php if ($fields["resourceConstraints_useLimitation"]) {?>
++      <gmd:resourceConstraints>
++        <gmd:MD_LegalConstraints>
++          <gmd:useLimitation>
++            <gco:CharacterString><?php print $fields["resourceConstraints_useLimitation"]; ?></gco:CharacterString>
++          </gmd:useLimitation>
++        </gmd:MD_LegalConstraints>
++      </gmd:resourceConstraints>
++      <?php } ?>
++      <?php if ($fields["spatialResolution_equivalentScale_denominator"]) {?>
++      <gmd:spatialResolution>
++        <gmd:MD_Resolution>
++          <gmd:equivalentScale>
++            <gmd:MD_RepresentativeFraction>
++              <gmd:denominator>
++                <gco:Integer><?php print $fields["spatialResolution_equivalentScale_denominator"]; ?></gco:Integer>
++              </gmd:denominator>
++            </gmd:MD_RepresentativeFraction>
++          </gmd:equivalentScale>
++        </gmd:MD_Resolution>
++      </gmd:spatialResolution>
++      <?php } ?>
++      <gmd:language>
++        <gco:CharacterString><?php print $fields["resource_language"]; ?></gco:CharacterString>
++      </gmd:language>
++      <gmd:topicCategory>
++        <gmd:MD_TopicCategoryCode><?php print $fields["resource_topicCategory"]; ?></gmd:MD_TopicCategoryCode>
++      </gmd:topicCategory>
++      <gmd:extent>
++        <gmd:EX_Extent>
++          <?php if ($fields["extent_description"]) {?>
++          <gmd:description>
++            <gco:CharacterString><?php print $fields["extent_description"]; ?></gco:CharacterString>
++          </gmd:description>
++          <?php } ?>
++          <?php if (($fields["extent_westBoundLongitude"]) && ($fields["extent_eastBoundLongitude"]) && ($fields["extent_southBoundLatitude"]) && ($fields["extent_northBoundLatitude"])) {?>
++          <gmd:geographicElement>
++            <gmd:EX_GeographicBoundingBox>
++              <gmd:extentTypeCode>
++                <gco:Boolean>1</gco:Boolean>
++              </gmd:extentTypeCode>
++              <gmd:westBoundLongitude>
++                <gco:Decimal><?php print $fields["extent_westBoundLongitude"]; ?></gco:Decimal>
++              </gmd:westBoundLongitude>
++              <gmd:eastBoundLongitude>
++                <gco:Decimal><?php print $fields["extent_eastBoundLongitude"]; ?></gco:Decimal>
++              </gmd:eastBoundLongitude>
++              <gmd:southBoundLatitude>
++                <gco:Decimal><?php print $fields["extent_southBoundLatitude"]; ?></gco:Decimal>
++              </gmd:southBoundLatitude>
++              <gmd:northBoundLatitude>
++                <gco:Decimal><?php print $fields["extent_northBoundLatitude"]; ?></gco:Decimal>
++              </gmd:northBoundLatitude>
++            </gmd:EX_GeographicBoundingBox>
++          </gmd:geographicElement>
++          <?php } ?>
++        </gmd:EX_Extent>
++      </gmd:extent>
++      <?php if (($fields["extent_TimePeriod_frame"]) && (($fields["resource_TimePeriod_frame"] == "#ISO-8601") || ($fields["resource_TimePeriod_frame"] == "urn:cgi:trs:CGI:StandardGeologicTimeMa"))) {?>
++      <gmd:extent>
++        <gmd:EX_Extent>
++          <gmd:temporalElement>
++            <gmd:EX_TemporalExtent>
++              <gmd:extent>
++                <?php if (($fields["resource_TimePeriod_frame"] == "#ISO-8601")) {?>
++                <gml:TimePeriod gml:id="IdModern">
++                  <gml:name><?php print $fields["extent_TimePeriod_name"]; ?></gml:name>
++                  <gml:beginPosition frame="<?php print $fields["extent_TimePeriod_frame"]; ?>"><?php print $fields["extent_TimePeriod_beginPosition"]; ?></gml:beginPosition>
++                  <gml:endPosition frame="<?php print $fields["extent_TimePeriod_frame"]; ?>"><?php print $fields["extent_TimePeriod_endPosition"]; ?></gml:endPosition>
++                </gml:TimePeriod>
++                <?php } ?>
++                <?php if (($fields["resource_TimePeriod_frame"] == "urn:cgi:trs:CGI:StandardGeologicTimeMa")) {?>
++                <gml:TimePeriod gml:id="IdGeological">
++                  <gml:name><?php print $fields["extent_TimePeriod_name"]; ?></gml:name>
++                  <gml:beginPosition frame="<?php print $fields["extent_TimePeriod_frame"]; ?>"><?php print $fields["extent_TimePeriod_beginPosition"]; ?></gml:beginPosition>
++                  <gml:endPosition frame="<?php print $fields["extent_TimePeriod_frame"]; ?>"><?php print $fields["extent_TimePeriod_endPosition"]; ?></gml:endPosition>
++                </gml:TimePeriod>
++                <?php } ?>
++              </gmd:extent>
++            </gmd:EX_TemporalExtent>
++          </gmd:temporalElement>
++        </gmd:EX_Extent>
++      </gmd:extent>
++      <?php } ?>
++      <?php if (($fields["extent_verticalElement_minimumValue"]) && ($fields["extent_verticalElement_maximumValue"])) {?>
++      <gmd:extent>
++        <gmd:EX_Extent>
++          <gmd:verticalElement>
++            <gmd:EX_VerticalExtent>
++              <gmd:minimumValue>
++                <gco:Real><?php print $fields["extent_verticalElement_minimumValue"]; ?></gco:Real>
++              </gmd:minimumValue>
++              <gmd:maximumValue>
++                <gco:Real><?php print $fields["extent_verticalElement_maximumValue"]; ?></gco:Real>
++              </gmd:maximumValue>
++              <gmd:verticalCRS xlink:href="urn:ogc:def:crs:EPSG::5714"/>
++            </gmd:EX_VerticalExtent>
++          </gmd:verticalElement>
++        </gmd:EX_Extent>
++      </gmd:extent>
++      <?php } ?>
++    </gmd:MD_DataIdentification>
++  </gmd:identificationInfo>
++  <!-- **************** -->
++  <?php if (
++						(($fields["distributor_contact_individualName"]) || ($fields["distributor_contact_organisationName"]) || ($fields["distributor_contact_positionName"]))
++						&& (($fields["distributorTransferOptions_url"]) || ($fields["distributionOrderProcess_orderingInstructions"])) ) {?>
++	<gmd:distributionInfo>
++		<gmd:MD_Distribution>
++			<gmd:distributor>
++				<gmd:MD_Distributor>
++					<?php if (($fields["distributor_contact_individualName"]) || ($fields["distributor_contact_organisationName"]) || ($fields["distributor_contact_positionName"])) {?>
++          <!-- (C) Distribution responsible party -->
++					<gmd:distributorContact>
++						<gmd:CI_ResponsibleParty>
++              <?php if ($fields["distributor_contact_individualName"]) {?>
++              <gmd:individualName>
++                <gco:CharacterString><?php print $fields["distributor_contact_individualName"]; ?></gco:CharacterString>
++              </gmd:individualName>
++              <?php } ?>
++              <?php if ($fields["distributor_contact_organisationName"]) {?>
++              <gmd:organisationName>
++                <gco:CharacterString><?php print $fields["distributor_contact_organisationName"]; ?></gco:CharacterString>
++              </gmd:organisationName>
++              <?php if ($fields["distributor_contact_positionName"]) {?>
++              <?php } ?>
++              <gmd:positionName>
++                <gco:CharacterString><?php print $fields["distributor_contact_positionName"]; ?></gco:CharacterString>
++              </gmd:positionName>
++              <?php } ?>
++              <?php if (($fields["distributor_contact_voice"]) || ($fields["distributor_contact_facsimile"]) || ($fields["distributor_contact_deliveryPoint"]) || ($fields["distributor_contact_electronicMailAddress"])) {?>
++              <gmd:contactInfo>
++                <gmd:CI_Contact>
++                  <?php if (($fields["distributor_contact_voice"]) || ($fields["distributor_contact_facsimile"])) {?>
++                  <gmd:phone>
++                    <gmd:CI_Telephone>
++                      <?php if ($fields["distributor_contact_voice"]) {?>
++                      <gmd:voice>
++                        <gco:CharacterString><?php print $fields["distributor_contact_voice"]; ?></gco:CharacterString>
++                      </gmd:voice>
++                      <?php } ?>
++                      <?php if ($fields["distributor_contact_facsimile"]) {?>
++                      <gmd:facsimile>
++                        <gco:CharacterString><?php print $fields["distributor_contact_facsimile"]; ?></gco:CharacterString>
++                      </gmd:facsimile>
++                      <?php } ?>
++                    </gmd:CI_Telephone>
++                  </gmd:phone>
++                  <?php } ?>
++                  <?php if (($fields["distributor_contact_deliveryPoint"]) || ($fields["distributor_contact_electronicMailAddress"])) {?>
++                  <gmd:address>
++                    <gmd:CI_Address>
++                      <?php if ($fields["distributor_contact_deliveryPoint"]) {?>
++                      <gmd:deliveryPoint>
++                        <gco:CharacterString><?php print $fields["distributor_contact_deliveryPoint"]; ?></gco:CharacterString>
++                      </gmd:deliveryPoint>
++                      <gmd:city>
++                        <gco:CharacterString><?php print $fields["distributor_contact_city"]; ?></gco:CharacterString>
++                      </gmd:city>
++                      <gmd:administrativeArea>
++                        <gco:CharacterString><?php print $fields["distributor_contact_administrativeArea"]; ?></gco:CharacterString>
++                      </gmd:administrativeArea>
++                      <gmd:postalCode>
++                        <gco:CharacterString><?php print $fields["distributor_contact_postalCode"]; ?></gco:CharacterString>
++                      </gmd:postalCode>
++                      <gmd:country>
++                        <gco:CharacterString><?php print $fields["distributor_contact_country"]; ?></gco:CharacterString>
++                      </gmd:country>
++                      <?php } ?>
++                      <?php if ($fields["distributor_contact_electronicMailAddress"]) {?>
++                      <gmd:electronicMailAddress>
++                        <gco:CharacterString><?php print $fields["distributor_contact_electronicMailAddress"]; ?></gco:CharacterString>
++                      </gmd:electronicMailAddress>
++                      <?php } ?>
++                    </gmd:CI_Address>
++                  </gmd:address>
++                  <?php } ?>
++                  <?php if ($fields["distributor_contact_onlineResource_URL"]) {?>
++                  <gmd:onlineResource>
++                    <gmd:CI_OnlineResource>
++                      <gmd:linkage>
++                        <gmd:URL><?php print $fields["distributor_contact_onlineResource_URL"]; ?></gmd:URL>
++                      </gmd:linkage>
++                      <gmd:protocol>
++                        <gco:CharacterString>http</gco:CharacterString>
++                      </gmd:protocol>
++                      <?php if ($fields["distributor_contact_onlineResource_description"]) {?>
++                      <gmd:description>
++                        <gco:CharacterString><?php print $fields["distributor_contact_onlineResource_description"]; ?></gco:CharacterString>
++                      </gmd:description>
++                      <?php } ?>
++                    </gmd:CI_OnlineResource>
++                  </gmd:onlineResource>
++                  <?php } ?>
++                  <?php if ($fields["distributor_contact_hoursOfService"]) {?>
++                  <gmd:hoursOfService>
++                    <gco:CharacterString><?php print $fields["distributor_contact_hoursOfService"]; ?></gco:CharacterString>
++                  </gmd:hoursOfService>
++                  <?php } ?>
++                  <?php if ($fields["distributor_contact_contactInstructions"]) {?>
++                  <gmd:contactInstructions>
++                    <gco:CharacterString><?php print $fields["distributor_contact_contactInstructions"]; ?></gco:CharacterString>
++                  </gmd:contactInstructions>
++                  <?php } ?>
++                </gmd:CI_Contact>
++              </gmd:contactInfo>
++              <?php } ?>
++              <gmd:role>
++	              <gmd:CI_RoleCode 
++									codeList="http://standards.iso.org/ittf/PubliclyAvailableStandards/ISO_19139_Schemas/resources/Codelist/gmxCodelists.xml#CI_RoleCode" 
++									codeListValue="distributor">distributor</gmd:CI_RoleCode>
++							</gmd:role>
++						</gmd:CI_ResponsibleParty>
++					</gmd:distributorContact>
++          <?php } ?>
++          <?php if ($fields["distributionOrderProcess_orderingInstructions"]) {?>
++					<!-- (O) Resource distributor order process - Information on the availability of the service which includes at least one of fees, available date and time, ordering instructions, or turnaround. -->
++					<gmd:distributionOrderProcess>
++						<gmd:MD_StandardOrderProcess>
++            	<?php if ($fields["distributionOrderProcess_fees"]) {?>
++							<gmd:fees>
++								<gco:CharacterString><?php print $fields["distributionOrderProcess_fees"]; ?></gco:CharacterString>
++							</gmd:fees>
++							<?php } ?>
++              <!-- (M) Ordering instructions - general instructions, terms and services provided by the distributor -->
++              <?php if ($fields["distributionOrderProcess_orderingInstructions"]) {?>
++							<gmd:orderingInstructions>
++								<gco:CharacterString><?php print $fields["distributionOrderProcess_orderingInstructions"]; ?></gco:CharacterString>
++							</gmd:orderingInstructions>
++              <?php } ?>
++							<?php if ($fields["distributionOrderProcess_turnaround"]) {?>
++							<gmd:turnaround>
++								<gco:CharacterString><?php print $fields["distributionOrderProcess_turnaround"]; ?></gco:CharacterString>
++							</gmd:turnaround>
++              <?php } ?>
++						</gmd:MD_StandardOrderProcess>
++					</gmd:distributionOrderProcess>
++          <?php } ?>
++          <?php if ($fields["distributorTransferOptions_url"]) {?>
++					<!-- Resource distributor transfer options - Provides information about the technical means and media used by the distributor. -->
++					<gmd:distributorTransferOptions>
++						<gmd:MD_DigitalTransferOptions>
++							<gmd:onLine>
++								<gmd:CI_OnlineResource>
++									<gmd:linkage>
++										<gmd:URL><?php print $fields["distributorTransferOptions_url"]; ?></gmd:URL>
++									</gmd:linkage>
++									<gmd:protocol>
++										<gco:CharacterString>http</gco:CharacterString>
++									</gmd:protocol>
++									<gmd:description>
++										<gco:CharacterString><?php print $fields["distributorTransferOptions_description"]; ?></gco:CharacterString>
++									</gmd:description>
++									<gmd:function>
++										<gmd:CI_OnLineFunctionCode 
++											codeList="http://standards.iso.org/ittf/PubliclyAvailableStandards/ISO_19139_Schemas/resources/Codelist/gmxCodelists.xml#CI_OnLineFunctionCode" 
++											codeListValue="information">information</gmd:CI_OnLineFunctionCode>
++									</gmd:function>
++								</gmd:CI_OnlineResource>
++							</gmd:onLine>
++						</gmd:MD_DigitalTransferOptions>
++					</gmd:distributorTransferOptions>
++          <?php } ?>
++				</gmd:MD_Distributor>
++			</gmd:distributor>
++      <?php if ($fields["distributorTransferOptions_url"]) {?>
++			<gmd:transferOptions>
++				<gmd:MD_DigitalTransferOptions>
++							<gmd:onLine>
++								<gmd:CI_OnlineResource>
++									<gmd:linkage>
++										<gmd:URL><?php print $fields["distributorTransferOptions_url"]; ?></gmd:URL>
++									</gmd:linkage>
++									<gmd:protocol>
++										<gco:CharacterString>http</gco:CharacterString>
++									</gmd:protocol>
++									<gmd:description>
++										<gco:CharacterString><?php print $fields["distributorTransferOptions_description"]; ?></gco:CharacterString>
++									</gmd:description>
++									<gmd:function>
++										<gmd:CI_OnLineFunctionCode 
++											codeList="http://standards.iso.org/ittf/PubliclyAvailableStandards/ISO_19139_Schemas/resources/Codelist/gmxCodelists.xml#CI_OnLineFunctionCode" 
++											codeListValue="information">information</gmd:CI_OnLineFunctionCode>
++									</gmd:function>
++								</gmd:CI_OnlineResource>
++							</gmd:onLine>
++				</gmd:MD_DigitalTransferOptions>
++			</gmd:transferOptions>
++      <?php } ?>
++		</gmd:MD_Distribution>
++	</gmd:distributionInfo>	
++  <?php } ?>
++</gmd:MD_Metadata>
++
++<?php endforeach; ?>
+\ No newline at end of file
+Index: export/views_bonus_plugin_style_export_iso.inc
+===================================================================
+RCS file: export/views_bonus_plugin_style_export_iso.inc
+diff -N export/views_bonus_plugin_style_export_iso.inc
+--- /dev/null	1 Jan 1970 00:00:00 -0000
++++ export/views_bonus_plugin_style_export_iso.inc	1 Jan 1970 00:00:00 -0000
+@@ -0,0 +1,27 @@
++<?php
++// $ $
++/**
++ * @file
++ * Plugin include file for export style plugin.
++ */
++
++/**
++ * Generalized style plugin for export plugins.
++ *
++ * @ingroup views_style_plugins
++ */
++class views_bonus_plugin_style_export_iso extends views_bonus_plugin_style_export {
++  var $feed_text = 'XML';
++  var $feed_file = 'view-%view.xml';
++
++  /**
++   * Initialize plugin.
++   *
++   * Set feed image for shared rendering later.
++   */
++  function init(&$view, &$display, $options = NULL) {
++    parent::init($view, $display, $options = NULL);
++    $this->feed_image = drupal_get_path('module', 'views_bonus_export') . '/images/xml.png';
++  }
++}
++
